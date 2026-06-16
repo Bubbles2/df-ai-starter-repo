@@ -1,7 +1,7 @@
 ---
 name: rn-expo-starter
 description: Bootstrap a new Expo React Native project with TypeScript, React Navigation v7, React Native Paper, and Axios. Optionally adds an Express + PostgreSQL backend following the same conventions as react-express-starter. Use when the user wants to start a fresh React Native mobile (or mobile+web) project.
-version: 1.0.0
+version: 1.2.0
 last_updated: 2026-06-15
 ---
 
@@ -55,8 +55,8 @@ These existing skills govern all code written during bootstrapping:
 |---|---|---|
 | Runtime | Node | 20.6+ |
 | Package manager | npm | — |
-| Mobile framework | Expo (managed workflow) | ~54.0.33 |
-| React | react | 19.1.0 |
+| Mobile framework | Expo (managed workflow) | ~54.0.33 (**SDK 54** — see version policy below) |
+| React | react + react-dom | 19.1.0 (`react-dom` is required for the `react-native-web` target) |
 | React Native | react-native | 0.81.5 |
 | Language | TypeScript | ~5.9.2 |
 | Navigation | @react-navigation/native + native-stack + bottom-tabs | ^7.2.4 / ^7.14.14 / ^7.15.13 |
@@ -75,8 +75,18 @@ These existing skills govern all code written during bootstrapping:
 | Text encoding | fast-text-encoding | ^1.0.6 |
 | Status bar | expo-status-bar | ~3.0.9 |
 | Types (React) | @types/react | ~19.1.10 |
-| Types (RN) | @types/react-native | ^0.72.8 |
 | Backend (optional) | Express 4 ESM + Sequelize 6 + PostgreSQL | (same as react-express-starter) |
+
+> **Do NOT install `@types/react-native`.** React Native ships its own types since 0.71; installing the standalone `@types/react-native` package causes type conflicts and `expo-doctor` flags it ("should not be installed directly"). It used to be listed here — it is intentionally gone.
+
+### Version policy — the table targets **Expo SDK 54**
+
+`npx create-expo-app@latest` installs whatever the **newest** SDK is (e.g. SDK 56+), which will **not** match the pinned versions above. This is the single most common scaffolding failure. Handle it explicitly:
+
+1. **Decide the SDK first.** If the user has no preference, default to pinning **SDK 54** (this table). If they want the latest SDK, take it — but then treat every version in this table as "nearest compatible", not exact, and let `expo install` choose.
+2. **Pin the SDK** right after `create-expo-app`: `npm install expo@~54.0.33` then `npx expo install --fix` (this realigns `react`, `react-native`, and all Expo-managed packages to the chosen SDK).
+3. **Install Expo-managed packages with `npx expo install`, never bare `npm install`** — `expo install` resolves SDK-compatible versions automatically. Use plain `npm install` only for pure-JS libraries that Expo does not manage (see the bootstrap order).
+4. **Always finish with `npx expo-doctor` and require 18/18 (or current total) passing** — a version mismatch surfaces there, not in `tsc`.
 
 ---
 
@@ -294,9 +304,31 @@ if (!fontsLoaded) return null;
 
 ### Mobile only
 
-1. `npx create-expo-app <name> --template blank-typescript`
-2. Install all deps from the stack table: `npm install react-native-paper@^5.15.3 @react-navigation/native@^7.2.4 ...`
-3. Add `tsconfig.json` — `strict: true`, path aliases
+1. `npx create-expo-app@latest <name> --template blank-typescript`
+2. **Pin the SDK** (see version policy): `npm install expo@~54.0.33` then `npx expo install --fix`. This realigns `react`/`react-native`/Expo packages to SDK 54.
+3. **Install Expo-managed packages with `expo install`** (it picks SDK-compatible versions — do NOT pin these by hand):
+
+   ```bash
+   npx expo install \
+     react-dom react-native-web @expo/metro-runtime \
+     react-native-screens react-native-safe-area-context react-native-svg \
+     expo-linear-gradient expo-status-bar \
+     expo-document-picker expo-file-system expo-sharing \
+     @react-native-async-storage/async-storage
+   ```
+
+4. **Install pure-JS libraries with `npm install`** (Expo does not manage these — pin per the stack table):
+
+   ```bash
+   npm install \
+     react-native-paper @react-navigation/native @react-navigation/native-stack \
+     @react-navigation/bottom-tabs axios lucide-react-native \
+     @expo-google-fonts/geist @expo-google-fonts/geist-mono mammoth fast-text-encoding
+   npm install -D babel-plugin-module-resolver typescript@~5.9.2 @types/react@~19.1.10
+   ```
+
+   Do **not** add `@types/react-native` (see the warning under the stack table).
+5. Add `tsconfig.json` — `strict: true`, path aliases
 4. Configure path alias resolution in `babel.config.js` (`babel-plugin-module-resolver`) or `metro.config.js`
 5. Create `src/` folder hierarchy (Layout A above)
 6. Create `src/constants/theme.ts` (Paper theme)
@@ -311,15 +343,37 @@ if (!fontsLoaded) return null;
 
 ### Mobile + backend
 
-1. Create root `package.json` with `concurrently` in devDependencies and a `dev` script
+1. Create root `package.json` with `workspaces: ["mobile", "server"]`, `concurrently` in devDependencies, and a `dev` script
 2. Follow Mobile bootstrap steps inside `mobile/`
 3. Follow `react-express-starter` bootstrap steps inside `server/`
 4. Set `API_URL` in `mobile/src/constants/config.ts` to the Express port (e.g. `http://127.0.0.1:3001`)
-5. Add root dev script:
+5. **Add a monorepo-aware `mobile/metro.config.js`** (required — with npm workspaces, deps hoist to the repo root and Metro must be told to resolve them). **Append** to the default `watchFolders`; do not replace it, or `expo-doctor` will fail ("watchFolders does not contain all entries from Expo's defaults"):
+
+   ```js
+   const { getDefaultConfig } = require("expo/metro-config");
+   const path = require("path");
+
+   const projectRoot = __dirname;
+   const workspaceRoot = path.resolve(projectRoot, "..");
+   const config = getDefaultConfig(projectRoot);
+
+   config.watchFolders = [...(config.watchFolders ?? []), workspaceRoot]; // append, never overwrite
+   config.resolver.nodeModulesPaths = [
+     path.resolve(projectRoot, "node_modules"),
+     path.resolve(workspaceRoot, "node_modules"),
+   ];
+
+   module.exports = config;
+   ```
+
+6. Install once from the repo root (`npm install`) so both workspaces resolve against the hoisted tree.
+7. Add root dev script:
 
    ```json
    "dev": "concurrently \"npm run start --workspace=mobile\" \"npm run dev:server --workspace=server\""
    ```
+
+   The server's own scripts should tolerate a missing `.env` — use `node --env-file-if-exists=../.env` (not `--env-file`, which hard-fails when `.env` is absent).
 
 ---
 
@@ -358,7 +412,10 @@ If any of these fail, report the error explicitly — do **not** claim the boots
 
 ## Definition of done
 
-- [ ] All deps from the stack table installed at the exact versions listed
+- [ ] SDK decided (default: pin SDK 54); Expo-managed packages installed via `expo install`, pure-JS libs pinned per the stack table
+- [ ] `@types/react-native` is **not** in `package.json`
+- [ ] `react-dom` present (required for the web target)
+- [ ] Monorepo only: `mobile/metro.config.js` present, appends to default `watchFolders`
 - [ ] `tsconfig.json` with `strict: true` and path aliases configured
 - [ ] `src/` folder structure matches Layout A (or Layout B for full-stack)
 - [ ] `src/constants/theme.ts` with Paper MD3 theme
@@ -370,5 +427,5 @@ If any of these fail, report the error explicitly — do **not** claim the boots
 - [ ] `.env.example` present; `.env` in `.gitignore`
 - [ ] `SPEC.md`, `AGENTS.md`, `CLAUDE.md` present
 - [ ] `npx tsc --noEmit` passes
-- [ ] `npx expo-doctor` reports no blockers
+- [ ] `npx expo-doctor` reports **all checks passing** (e.g. 18/18) — not just "no blockers"
 - [ ] Backend (if chosen): `npm run lint && npm run typecheck` clean per `react-express-starter` rules
