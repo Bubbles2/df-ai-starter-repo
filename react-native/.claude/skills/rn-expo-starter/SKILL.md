@@ -1,8 +1,8 @@
 ---
 name: rn-expo-starter
-description: Bootstrap a new Expo React Native project with TypeScript, React Navigation v7, React Native Paper, and Axios. Optionally adds an Express + PostgreSQL backend following the same conventions as react-express-starter. Use when the user wants to start a fresh React Native mobile (or mobile+web) project.
-version: 1.2.0
-last_updated: 2026-06-15
+description: Bootstrap a new Expo React Native project with TypeScript, React Navigation v7, React Native Paper, and Axios. Optionally adds an Express backend (with or without Sequelize/PostgreSQL) following the same conventions as react-web-express-starter. Use when the user wants to start a fresh React Native mobile (or mobile+web) project.
+version: 1.3.0
+last_updated: 2026-06-16
 ---
 
 # React Native (Expo) Starter
@@ -21,7 +21,10 @@ Before writing any code, ask **both** of the following questions (can be asked t
 >    - **Current folder** — scaffold directly into the working directory
 >    - **Sub-folder** — create a new directory (prompt for the name, e.g. `my-app`)
 >
-> 2. "Should this project include an Express + PostgreSQL backend? (y / n)"
+> 2. "Should this project include an Express backend? (y / n)"
+> 3. *(only if backend = yes)* "Should the backend use Sequelize + PostgreSQL? (y / n)"
+>    - **Yes** → Sequelize 6 over `pg`, lazy model accessors, `toNumber()` decimal coercion
+>    - **No** → no ORM; `pg` driver directly via a `server/config/db.js` `query()` helper (default), or the user's chosen driver
 
 Then proceed based on the answers:
 
@@ -42,7 +45,7 @@ These existing skills govern all code written during bootstrapping:
 |---|---|
 | `clean-typescript` | All `.ts` / `.tsx` files — `strict: true`, no `any`, no `!` assertions |
 | `modern-react-components` | All React components — no `useEffect` for derived state, named function declarations, Axios hooks |
-| `api-structure` | Backend domain layout (if Express chosen) — per-domain controllers, lazy models, `schemaTable()` |
+| `api-structure` | Backend domain layout (if Express chosen) — per-domain controllers, routers, and (if Sequelize) lazy models |
 | `web-security` | Trust boundaries — validate inputs, generic error envelopes, no secrets committed |
 | `modern-browser-apis` | Web target (`react-native-web`) — prefer native APIs; `Intl.NumberFormat` for formatting |
 | `code-review` | Run before declaring the bootstrap done |
@@ -75,7 +78,7 @@ These existing skills govern all code written during bootstrapping:
 | Text encoding | fast-text-encoding | ^1.0.6 |
 | Status bar | expo-status-bar | ~3.0.9 |
 | Types (React) | @types/react | ~19.1.10 |
-| Backend (optional) | Express 4 ESM + Sequelize 6 + PostgreSQL | (same as react-express-starter) |
+| Backend (optional) | Express 4 ESM; data layer optional (Sequelize 6 + PostgreSQL, or plain `pg`) | (same as react-web-express-starter) |
 
 > **Do NOT install `@types/react-native`.** React Native ships its own types since 0.71; installing the standalone `@types/react-native` package causes type conflicts and `expo-doctor` flags it ("should not be installed directly"). It used to be listed here — it is intentionally gone.
 
@@ -137,7 +140,7 @@ These existing skills govern all code written during bootstrapping:
 <project-root>/
 ├── mobile/                         # Expo app — Layout A structure inside
 │   └── ... (same as Layout A)
-├── server/                         # Express backend — follows react-express-starter
+├── server/                         # Express backend — follows react-web-express-starter
 │   ├── index.js
 │   ├── app.js
 │   ├── api/
@@ -149,13 +152,15 @@ These existing skills govern all code written during bootstrapping:
 │   │       ├── <domain>Controller.js
 │   │       └── index.js
 │   ├── config/
-│   │   ├── database.js
-│   │   └── schema.js
-│   ├── models/
+│   │   ├── database.js          # Sequelize instance               (sequelize = yes)
+│   │   │   └── ─ OR ─
+│   │   ├── db.js                # pg pool + query() helper          (sequelize = no)
+│   │   └── http.js              # axios instance for external APIs  (sequelize = no)
+│   ├── models/                  # Sequelize only (sequelize = yes)
 │   │   ├── index.js
 │   │   └── <domain>.js
 │   └── utils/
-│       └── number.js
+│       └── number.js            # toNumber() — Sequelize/pg decimal coercion
 ├── .env.example
 ├── package.json                    # Root scripts using concurrently
 ├── SPEC.md
@@ -287,16 +292,15 @@ if (!fontsLoaded) return null;
 ### Formatting
 
 - Numbers: use `Intl.NumberFormat` — do **not** add `numeral.js` or similar
-- Decimal coercion: `toNumber()` util (mirrors the pattern in `react-express-starter`)
+- Decimal coercion: `toNumber()` util (mirrors the pattern in `react-web-express-starter`)
 
-### Backend (if chosen) — follow `api-structure` + `react-express-starter` skills exactly
+### Backend (if chosen) — follow `api-structure` + `react-web-express-starter` skills exactly
 
 - `server/index.js` listens on `API_PORT`, binds to `127.0.0.1`
 - Per-domain layout: `server/api/<domain>/<domain>Controller.js` + `index.js`
-- Lazy Sequelize model accessors via `getXxxModels()`
-- `schemaTable()` for every raw SQL identifier interpolation
-- `toNumber()` on every Decimal before returning JSON
-- Read-only database contract; no `INSERT/UPDATE/DELETE` paths
+- **If Sequelize** (question 3 = yes): lazy model accessors via `getXxxModels()`; `toNumber()` on every Decimal before returning JSON
+- **If plain `pg`** (question 3 = no): centralise the pool in `server/config/db.js` (parameterised `query()` calls only) **and** add an `axios` instance in `server/config/http.js` for calling external/upstream REST APIs
+- Decide read-only vs read-write **with the user** — don't assume. If interpolating dynamic SQL identifiers, validate them against an allowlist (`api-structure`)
 
 ---
 
@@ -345,7 +349,7 @@ if (!fontsLoaded) return null;
 
 1. Create root `package.json` with `workspaces: ["mobile", "server"]`, `concurrently` in devDependencies, and a `dev` script
 2. Follow Mobile bootstrap steps inside `mobile/`
-3. Follow `react-express-starter` bootstrap steps inside `server/`
+3. Follow `react-web-express-starter` bootstrap steps inside `server/`
 4. Set `API_URL` in `mobile/src/constants/config.ts` to the Express port (e.g. `http://127.0.0.1:3001`)
 5. **Add a monorepo-aware `mobile/metro.config.js`** (required — with npm workspaces, deps hoist to the repo root and Metro must be told to resolve them). **Append** to the default `watchFolders`; do not replace it, or `expo-doctor` will fail ("watchFolders does not contain all entries from Expo's defaults"):
 
@@ -428,4 +432,4 @@ If any of these fail, report the error explicitly — do **not** claim the boots
 - [ ] `SPEC.md`, `AGENTS.md`, `CLAUDE.md` present
 - [ ] `npx tsc --noEmit` passes
 - [ ] `npx expo-doctor` reports **all checks passing** (e.g. 18/18) — not just "no blockers"
-- [ ] Backend (if chosen): `npm run lint && npm run typecheck` clean per `react-express-starter` rules
+- [ ] Backend (if chosen): `npm run lint && npm run typecheck` clean per `react-web-express-starter` rules

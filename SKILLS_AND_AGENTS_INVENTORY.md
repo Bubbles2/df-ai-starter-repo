@@ -41,7 +41,7 @@
 - **code-review** — Read-only, evidence-based code review (never modifies files). *(includes `code-review/agents/openai.yaml` config)*
 - **modern-browser-apis** — Prefer native browser APIs over libraries for size/perf.
 - **modern-react-components** — Build modern React 18+ components, avoid state/useEffect pitfalls.
-- **react-express-starter** — Bootstrap a fresh project mirroring this stack.
+- **react-web-express-starter** — Bootstrap a fresh React (web) + Vite project with an optional Express + (Sequelize or pg) + axios backend.
 - **web-security** — Enforce baseline web security across trust boundaries.
 
 ### `ArcMob/.claude/skills/` and `ArcMobWord/.claude/skills/` (React Native / Arcade stack)
